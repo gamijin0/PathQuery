@@ -3,8 +3,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 import math
 import random
-from common import isPathCover
+from common import isPathCover, extractSubPath
 import ast
+
+pathCache = []
+CACHE_LIMIT = 1000
+cached_nodes_num = 0
 
 engine = create_engine("sqlite:///dbv1.sqlite")
 metadata = MetaData(engine)
@@ -90,15 +94,20 @@ def PSAQuery1(ODtupleList):
     return resDict
 
 
+def addPathToCache(path):
+    pathCache.append(path)
+
+
 # 输入一系列path来构造cache
 def PCCA1(pathset, capacity=100):
+    global cached_nodes_num
     pathDict = {}
     temp = []
-    for odtu, path in pathset:
-        od, td = odtu[0], odtu[-1]
+    for path in pathset:
+        od, td = path[0], path[-1]
         L2 = ((od[0] - td[0]) * 100) ** 2 + ((od[1] - td[1]) * 100) ** 2  # 适当放大避免精度问题
         pathDict[(od, td)] = [L2, path, 0]  # 长度，路径，SA
-        temp.append((L2, odtu))
+        temp.append((L2, (od, td)))
     temp.sort(key=lambda x: x[0], reverse=True)  # 找到最长的
     longestquery = temp[0][1]
     temp = temp[1:]
@@ -110,25 +119,48 @@ def PCCA1(pathset, capacity=100):
             if (isPathCover(pathDict[longestquery][1], thisquery[0], thisquery[1])):
                 print("PCCA Path Cover!:")
                 print(thisquery)
-                # TODO:修改shareAblity
+                print(pathDict[longestquery])
+                # TODO:修正shareAblity
                 temp.remove(temp[i])
                 pathDict[longestquery][2] += 1
                 # print(pathDict[longestquery])
             else:
                 i += 1
         pathDict[longestquery][2] /= len(pathDict[longestquery][1])
-        print(pathDict[longestquery])
         longestquery = temp[0][1]
         # temp = list(filter(lambda x: x[1] != longestquery, temp))
         temp = temp[1:]
+    paths = [v for k, v in pathDict.items()]
+    paths.sort(key=lambda x: x[2], reverse=True)
+    while (cached_nodes_num < CACHE_LIMIT and paths):
+        fp = paths[0]
+        paths = paths[1:]
+        addPathToCache(fp)
+        cached_nodes_num += len(fp)
+        print("Cached: " + str(fp))
 
 
 # PCA
 # 利用缓存来进一步减少查询的次数
 def PCAQuery1(ODtupleList):
-    pass
-
-
-# 基于结构1的查询
-def query1(ODtupleList):
-    pass
+    res = []
+    PSAset = []
+    for tu in ODtupleList:
+        flag = False
+        for path in pathCache:
+            if (isPathCover(path, tu[0], tu[1])):
+                p = extractSubPath(path, tu[0], tu[1])
+                print("PCA Cache hit:")
+                print(tu, p)
+                res.append(p)
+                flag = True
+                break
+        if (flag == False):
+            # PCA不能回答则交给PSA回答
+            PSAset.append(tu)
+    if (PSAset):
+        res += PSAQuery1(PSAset)
+    # print(res[:20])
+    # print("=" * 20)
+    # print(res[-20:-1:-1])
+    return res

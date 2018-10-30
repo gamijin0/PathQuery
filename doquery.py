@@ -3,7 +3,11 @@ from storage1 import generateAvailableQuery, mockCloudBasedPathQuey, PSAQuery1, 
 if (__name__ == "__main__"):
     # for od, dt in generateAvailableQuery():
     # mockCloudBasedPathQuey(od, dt)
-    qset = list(generateAvailableQuery(num=2000))
-    pathset = PSAQuery1(qset)
+    qset = list(generateAvailableQuery(num=1000))
+    tempres = []
+    for query in qset:
+        tempres.append(mockCloudBasedPathQuey(query[0],query[1]))
+    # pathset = PSAQuery1(qset)
     # print(pathset)
-    PCCA1(pathset.items())
+    PCCA1(tempres)
+    PCAQuery1(qset)
