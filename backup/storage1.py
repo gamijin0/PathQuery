@@ -99,7 +99,7 @@ def addPathToCache(path):
 
 
 # 输入一系列path来构造cache
-def PCCA1(pathset, capacity=100):
+def PCCA1(pathset):
     global cached_nodes_num
     pathDict = {}
     temp = []
