@@ -1,5 +1,6 @@
 import hashlib
 import math
+from rtree import index
 
 
 # 向云服务查询一条最短路径
@@ -22,6 +23,7 @@ def PSA(querylist: "list([(Node,Node),])"):
     j = 1
 
     res = {}
+    count = 0
 
     while (i < len(querylist) - 1):
         longerPath = mockCloudBaseQuery(querylist[i])
@@ -30,7 +32,8 @@ def PSA(querylist: "list([(Node,Node),])"):
             shorterQuery = querylist[j]
             if (longerPath.isCoverNode(shorterQuery[0])
                 and longerPath.isCoverNode(shorterQuery[1])):
-                print("PSA Hit:%s-->%s" % (longerPath, shorterQuery))
+                count += 1
+                print("PSA Hit %d :%s-->%s" % (count, longerPath, shorterQuery))
                 res[shorterQuery] = extractSubPath(longerPath, shorterQuery)
                 querylist.remove(shorterQuery)
             else:
@@ -110,6 +113,14 @@ class Path:
     def ShareAblityPerNode(self):
         return self.shareAbility * 1.0 / self.nodeNumber
 
+    @property
+    def bonding_box(self) -> tuple:
+        left = min([node.x for node in self.nodelist])
+        bottom = min([node.y for node in self.nodelist])
+        right = max([node.x for node in self.nodelist])
+        top = max([node.y for node in self.nodelist])
+        return (left, bottom, right, top)
+
 
 # 所有的查找都是遍历，没有索引加速
 # Cache[
@@ -126,7 +137,7 @@ class PathCache1:
         self.capacity = capacity
         pass
 
-    def addpath(self, path: "Path"):
+    def __addpath(self, path: "Path"):
         self.pathlist.append(path)
         self.size += len(path.nodelist)
 
@@ -156,11 +167,21 @@ class PathCache1:
             if (self.size + path.nodeNumber > self.capacity):
                 break
             else:
-                self.addpath(path)
+                self.__addpath(path)
 
     def PCA(self, querylist: "[(Node,Node)]"):
-        pass
-
+        res = {}
+        count = 0
+        for query in querylist:
+            for path in self.pathlist:
+                if (path.isCoverNode(query[0]) and path.isCoverNode(query[1])):
+                    count += 1
+                    print("PCA Hit %d :%s -> %s" % (count, path, query))
+                    res[query] = extractSubPath(path, query)
+                    querylist.remove(query)
+                    break
+        res += PSA(querylist)
+        return res
 
 
 # 第二种缓存结构
@@ -171,8 +192,9 @@ class PathCache2:
     capacity = 0
     size = 0
 
-    def __int__(self, capacity=1000):
+    def __init__(self, capacity=1000):
         self.capacity = capacity
+        self.ridx = index.Index()
         pass
 
     def __insertNodeReversePathTable(self, node, path: "Path"):
@@ -188,14 +210,19 @@ class PathCache2:
                         if (node2 not in self.__neighbourDict[node1]):
                             self.__neighbourDict[node1].append(node2)
 
-    def addpath(self, path: "Path"):
+    def get_path_by_ID(self, ID) -> "Path":
+        pass
+
+    def __addpath(self, path: "Path"):
         for node in path.nodelist:
             self.__insertNodeReversePathTable(node, path)
         self.__updateNeighbourTable(path)
         self.size += path.nodeNumber
+        self.ridx.insert(path.ID, path.bonding_box)
 
     def PCCA(self, pathlist: "list[Path]"):
 
+        # ====================================================
         pathlist.sort(key=lambda x: x.length, reverse=True)
 
         i = 0
@@ -220,4 +247,58 @@ class PathCache2:
             if (self.size + path.nodeNumber > self.capacity):
                 break
             else:
-                self.addpath(path)
+                self.__addpath(path)
+
+    # 利用Rtree来查找覆盖的path
+    def do_rtree_query(self, query) -> "Path":
+        query = Path(query)
+        for item in self.ridx.intersection(query.bonding_box):
+            path = self.get_path_by_ID(item.id)
+            if (path.isCoverPath(query)):
+                return extractSubPath(path, query)
+        return None
+
+    def PCA(self, querylist: "[(Node,Node),]"):
+        res = {}
+        for query in querylist:
+            path = self.do_rtree_query(query)
+            if (path):
+                res[query] = path
+                querylist.remove(query)
+        res += PSA(querylist)
+
+        return res
+
+
+if (__name__ == "__main__"):
+    POIlist = []
+    from .readdata import readNode, readPOI, generateOneQuery, generateOnePath
+
+    for poi_node in readNode():
+        pass
+    for poi_node in readPOI():
+        POIlist.append(poi_node)
+
+    # 用POI生成一些query
+    querylist = []
+    for i in range(2):
+        query = generateOneQuery()
+        querylist.append(query)
+
+    # 用POI和node生成一些path
+    pathlist = []
+    for i in range(10000):
+        path = generateOnePath()
+        pathlist.append(path)
+
+    # 初始化两种cache
+    cache1 = PathCache1(capacity=2000)
+    cache2 = PathCache2(capacity=2000)
+
+    # 把path信息添加到缓存内
+    cache1.PCCA(pathlist)
+    cache2.PCCA(pathlist)
+
+    # 利用缓存进行查询
+    cache1.PCA(querylist)
+    cache2.PCA(querylist)

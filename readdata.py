@@ -50,7 +50,8 @@ def readNode():
 
 
 def generateOnePath():
-    pass
+    origin, destation = random.sample(POIlist, 2)
+
 
 
 def generateOneQuery():
