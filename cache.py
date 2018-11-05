@@ -1,11 +1,12 @@
 import hashlib
 import math
 from rtree import index
+import pickle
 
 
 # 向云服务查询一条最短路径
 def mockCloudBaseQuery(query: "(Node,Node)") -> "Path":
-    return Path([])
+    return Path([Node(666666, 0.0, 0.0)])
 
 
 # 从长的path中截取subpath作为query的答案
@@ -62,6 +63,9 @@ class Node:
     def __str__(self):
         return "Node<%d>(%.2f,%.2f)" % (self.nid, self.x, self.y)
 
+    def __hash__(self):
+        return self.nid
+
     __repr__ = __str__
 
 
@@ -82,6 +86,9 @@ class Path:
     @property
     def originNode(self):
         return self.nodelist[0]
+
+    def __repr__(self):
+        return "{" + "->".join([str(node) for node in self.nodelist]) + "}"
 
     # 终点
     @property
@@ -105,9 +112,9 @@ class Path:
 
     # 返回一个唯一的ID
     @property
-    def ID(self):
-        return "-".join([str(node.nid) for node in self.nodelist])
-        # return int(hashlib.sha256(str(self.nodelist).encode('utf-8')).hexdigest(), 16) % 10 ** 9
+    def ID(self) -> "int":
+        # return "-".join([str(node.nid) for node in self.nodelist])
+        return int(hashlib.sha256(str(self.nodelist).encode('utf-8')).hexdigest(), 16) % 10 ** 9
 
     @property
     def ShareAblityPerNode(self):
@@ -129,7 +136,7 @@ class Path:
 #       ...],
 #   ...]
 class PathCache1:
-    pathlist = []
+    querypathlist = []
     capacity = 0
     size = 0
 
@@ -168,6 +175,7 @@ class PathCache1:
                 break
             else:
                 self.__addpath(path)
+                print("Add path to cache1,sa:%.2f" % path.ShareAblityPerNode)
 
     def PCA(self, querylist: "[(Node,Node)]"):
         res = {}
@@ -180,7 +188,7 @@ class PathCache1:
                     res[query] = extractSubPath(path, query)
                     querylist.remove(query)
                     break
-        res += PSA(querylist)
+        res.update(PSA(querylist))
         return res
 
 
@@ -197,28 +205,26 @@ class PathCache2:
         self.ridx = index.Index()
         pass
 
-    def __insertNodeReversePathTable(self, node, path: "Path"):
+    def __insertNodeReversePathTable(self, node: "Node", path: "Path"):
         self.__reverseDict.setdefault(node, path.ID)
 
     def __updateNeighbourTable(self, path: "Path"):
         for node1 in path.nodelist:
             for node2 in path.nodelist:
                 if (node1 != node2):
-                    if (node1 in self.__neighbourDict):
+                    if (node1 not in self.__neighbourDict):
                         self.__neighbourDict.setdefault(node1, [node2])
                     else:
                         if (node2 not in self.__neighbourDict[node1]):
                             self.__neighbourDict[node1].append(node2)
-
-    def get_path_by_ID(self, ID) -> "Path":
-        pass
 
     def __addpath(self, path: "Path"):
         for node in path.nodelist:
             self.__insertNodeReversePathTable(node, path)
         self.__updateNeighbourTable(path)
         self.size += path.nodeNumber
-        self.ridx.insert(path.ID, path.bonding_box)
+        bb = path.bonding_box
+        self.ridx.insert(id=path.ID, coordinates=bb)
 
     def PCCA(self, pathlist: "list[Path]"):
 
@@ -250,12 +256,28 @@ class PathCache2:
                 self.__addpath(path)
 
     # 利用Rtree来查找覆盖的path
-    def do_rtree_query(self, query) -> "Path":
-        query = Path(query)
-        for item in self.ridx.intersection(query.bonding_box):
-            path = self.get_path_by_ID(item.id)
-            if (path.isCoverPath(query)):
-                return extractSubPath(path, query)
+    def do_rtree_query(self, query: "(Node,Node)") -> "Path":
+        # 用一次查询的起点和终点分别构造一个bonding_box
+        origin_bb = [query[0].x, query[0].y, query[0].x, query[0].y]
+        destination_bb = [query[1].x, query[1].y, query[1].x, query[1].y]
+
+        # 利用bonding_box对rtree_index进行交集查询，得到候选pid_list
+        origin_in_pathid_list = list(self.ridx.intersection(origin_bb))
+        destination_in_pathid_list = list(self.ridx.intersection(destination_bb))
+
+        pid_set = set(origin_in_pathid_list) & set(destination_in_pathid_list)
+
+        if (pid_set):
+            print(pid_set)
+        else:
+            return None
+
+        # query = Path(query)
+        # for item in self.ridx.intersection(query.bonding_box):
+        #     path = self.get_path_by_ID(item.id)
+        #     if (path.isCoverPath(query)):
+        #         return extractSubPath(path, query)
+        # exit(0)
         return None
 
     def PCA(self, querylist: "[(Node,Node),]"):
@@ -265,40 +287,58 @@ class PathCache2:
             if (path):
                 res[query] = path
                 querylist.remove(query)
-        res += PSA(querylist)
+        res.update(PSA(querylist))
 
         return res
 
 
 if (__name__ == "__main__"):
-    POIlist = []
-    from .readdata import readNode, readPOI, generateOneQuery, generateOnePath
+    from readdata import readNode, readEdge, readPOI, generateOneQuery, generateOnePath
 
-    for poi_node in readNode():
-        pass
-    for poi_node in readPOI():
-        POIlist.append(poi_node)
+    readNode()
+    readPOI()
+    readEdge()
 
-    # 用POI生成一些query
+    # 从文件中读取一些生成好的path
+    pkl_file = open('path100_10_16_49.storage', 'rb')
+    querypathlist = pickle.load(pkl_file)
     querylist = []
-    for i in range(2):
-        query = generateOneQuery()
-        querylist.append(query)
+    for path in querypathlist:
+        querylist.append((path.originNode, path.destinationNode))
+
+    # # 用POI生成一些query
+    # querylist = []
+    # queryNum = 100000
+    # for i in range(queryNum):
+    #     query = generateOneQuery()
+    #     querylist.append(query)
+    # print("Generate %d query." % queryNum)
+
+    # 从文件中读取一些生成好的path
+    pkl_file = open('path10000_10_16_23.storage', 'rb')
+    querypathlist = pickle.load(pkl_file)
+    print("Read %d path." % (len(querypathlist)))
 
     # 用POI和node生成一些path
-    pathlist = []
-    for i in range(10000):
-        path = generateOnePath()
-        pathlist.append(path)
+    # pathlist = []
+    # pathNum = 1000
+    # for i in range(pathNum):
+    #     path = generateOnePath()
+    #     print(path)
+    #     pathlist.append(path)
+    # print("Generate %d path." % pathNum)
 
     # 初始化两种cache
     cache1 = PathCache1(capacity=2000)
-    cache2 = PathCache2(capacity=2000)
+    cache2 = PathCache2(capacity=10000)
 
     # 把path信息添加到缓存内
-    cache1.PCCA(pathlist)
-    cache2.PCCA(pathlist)
+    # cache1.PCCA(pathlist)
+    cache2.PCCA(querypathlist)
+    print("Cache2 have %d path." % (cache2.size))
 
+    #
     # 利用缓存进行查询
-    cache1.PCA(querylist)
-    cache2.PCA(querylist)
+    # cache1.PCA(querylist)
+    res2 = cache2.PCA(querylist)
+    print("PCA2 return %d answer." % (len(res2)))

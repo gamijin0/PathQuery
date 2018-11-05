@@ -6,7 +6,11 @@ import hashlib
 
 sys.path.append(".")
 
-from src.cache import Node
+from src.cache import Node, Path
+
+POIList = []
+EdgeDict = {}
+NodeDict = {}
 
 
 def readPOI():
@@ -24,7 +28,7 @@ def readPOI():
                 cata, x, y = line.split(' ')
                 nid = int(hashlib.sha256(str((x, y)).encode('utf-8')).hexdigest(), 16) % 10 ** 8
                 count += 1
-                yield Node(nid, x, y)
+                POIList.append(Node(nid, x, y))
             except Exception as e:
                 pass
         print("Read %d POIs." % count)
@@ -43,31 +47,84 @@ def readNode():
             try:
                 nid, x, y = line.strip().split(' ')
                 count += 1
-                yield Node(nid, x, y)
+                NodeDict[int(nid)] = Node(nid, x, y)
             except Exception as e:
                 pass
         print("Read %d Nodes." % count)
 
 
-def generateOnePath():
-    origin, destation = random.sample(POIlist, 2)
-
-
-
 def generateOneQuery():
-    origin, destation = random.sample(POIlist, 2)
+    origin, destation = random.sample(POIList, 2)
     return origin, destation
 
 
+def readEdge():
+    with open(os.path.join(DATA_DIR,
+                           "California Road Network's Edges (Edge ID, Start Node ID, End Node ID, L2 Distance).txt"),
+              mode='r',
+              encoding='utf-8'
+              ) as f:
+        while True:
+            line = f.readline()
+            if not line:
+                break
+            edgeid, sid, eid, dis = line.split(' ')
+            EdgeDict[int(edgeid)] = (int(sid), int(eid))
+    print("Read %d edges" % len(EdgeDict))
+
+
+# 生成一条虚拟的路径
+def generateOnePath(a=3, b=5):
+    targetLength = random.randint(a, b)
+    while True:
+        startEdgeId = random.randint(0, len(EdgeDict) - 1)
+        neighbourEidList = [startEdgeId]
+        nextSid = EdgeDict[startEdgeId][1]
+        for i in range(targetLength):
+            nexts = {k: v for k, v in EdgeDict.items() if v[0] == nextSid}
+            if (len(nexts) == 0):
+                break
+            k, v = random.choice(list(nexts.items()))
+            neighbourEidList.append(int(k))
+            nextSid = v[1]
+        if (len(neighbourEidList) >= targetLength):
+            break
+
+    nodelist = [NodeDict[EdgeDict[neighbourEidList[0]][0]]]
+    for eid in neighbourEidList:
+        nodelist.append(NodeDict[EdgeDict[eid][1]])
+
+    first = nodelist[0]
+    last = nodelist[-1]
+    nodelist = [sorted(POIList, key=lambda x: x.lengthTo(first))[0]] + nodelist
+    nodelist.append(sorted(POIList, key=lambda x: x.lengthTo(last))[0])
+
+    res = Path(nodelist)
+    return res
+
+
 if (__name__ == "__main__"):
+    readNode()
+    readPOI()
+    readEdge()
 
-    POIlist = []
+    import pickle
+    from datetime import datetime
 
-    for poi_node in readNode():
-        pass
-    for poi_node in readPOI():
-        POIlist.append(poi_node)
+    # pkl_file = open('path.storage', 'rb')
+    # pathlist = pickle.load(pkl_file)
+    # for path in pathlist:
+    #     print(path)
 
-    for i in range(2):
-        query = generateOneQuery()
-        print(query)
+    pathlist = []
+    pathNum = 10000
+
+    t = datetime.now()
+
+    output = open('path%d_%s.storage' % (pathNum,str(t)[11:19].replace(':','_')), 'wb')
+    for i in range(pathNum):
+        path = generateOnePath()
+        print(i)
+        pathlist.append(path)
+    print("Generate %d path." % pathNum)
+    pickle.dump(pathlist, output)
