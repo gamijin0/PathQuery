@@ -1,4 +1,4 @@
-DATA_DIR = '../data/'
+DATA_DIR = './data/'
 import os
 import random
 import sys
@@ -6,12 +6,13 @@ import hashlib
 
 sys.path.append(".")
 
-from src.cache import Node, Path
+from cache import Node, Path
+from dijkstra import Graph
 
 POIList = []
 EdgeDict = {}
 NodeDict = {}
-
+DijkstraGraph = None
 
 def readPOI():
     count = 0
@@ -59,6 +60,8 @@ def generateOneQuery():
 
 
 def readEdge():
+    global DijkstraGraph
+    edge_list_for_dijkstra = []
     with open(os.path.join(DATA_DIR,
                            "California Road Network's Edges (Edge ID, Start Node ID, End Node ID, L2 Distance).txt"),
               mode='r',
@@ -69,8 +72,14 @@ def readEdge():
             if not line:
                 break
             edgeid, sid, eid, dis = line.split(' ')
+            edge_list_for_dijkstra.append((int(sid),int(eid),float(dis)))
             EdgeDict[int(edgeid)] = (int(sid), int(eid))
     print("Read %d edges" % len(EdgeDict))
+
+    DijkstraGraph = Graph(edge_list_for_dijkstra)
+    print("Generate a dijistra graph for all edges")
+
+
 
 
 # 生成一条虚拟的路径
@@ -108,10 +117,12 @@ if (__name__ == "__main__"):
     readPOI()
     readEdge()
 
+    # print(generateOnePath())
+
     import pickle
     from datetime import datetime
-
-    # pkl_file = open('path.storage', 'rb')
+    #
+    # pkl_file = open('./path100_10_16_49.storage', 'rb')
     # pathlist = pickle.load(pkl_file)
     # for path in pathlist:
     #     print(path)
