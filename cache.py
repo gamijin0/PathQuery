@@ -2,6 +2,21 @@ import hashlib
 import math
 from rtree import index
 import pickle
+import time
+
+def timeit(method):
+    def timed(*args, **kw):
+        ts = time.time()
+        result = method(*args, **kw)
+        te = time.time()
+        if 'log_time' in kw:
+            name = kw.get('log_name', method.__name__.upper())
+            kw['log_time'][name] = int((te - ts) * 1000)
+        else:
+            print('%r  %2.2f ms' % \
+                  (method.__name__, (te - ts) * 1000))
+        return result
+    return timed
 
 
 # 向云服务查询一条最短路径
@@ -144,11 +159,14 @@ class PathCache1:
         self.capacity = capacity
         pass
 
+    @timeit
     def __addpath(self, path: "Path"):
         self.pathlist.append(path)
         self.size += len(path.nodelist)
 
+
     # 输入一些path来构造缓存
+    @timeit
     def PCCA(self, pathlist: "[Path]", ):
 
         pathlist.sort(key=lambda x: x.length, reverse=True)
@@ -205,19 +223,27 @@ class PathCache2:
         self.ridx = index.Index()
         pass
 
+
     def __insertNodeReversePathTable(self, node: "Node", path: "Path"):
         self.__reverseDict.setdefault(node, path.ID)
 
+    @timeit
     def __updateNeighbourTable(self, path: "Path"):
-        for node1 in path.nodelist:
-            for node2 in path.nodelist:
-                if (node1 != node2):
-                    if (node1 not in self.__neighbourDict):
-                        self.__neighbourDict.setdefault(node1, [node2])
-                    else:
-                        if (node2 not in self.__neighbourDict[node1]):
-                            self.__neighbourDict[node1].append(node2)
+        i=0
+        while(i<len(path.nodelist)-1):
+            j = i+1
+            node1 = path.nodelist[i]
+            while(j<len(path.nodelist)):
+                node2 = path.nodelist[j]
+                if (node1 not in self.__neighbourDict):
+                    self.__neighbourDict.setdefault(node1, [node2])
+                else:
+                    if (node2 not in self.__neighbourDict[node1]):
+                        self.__neighbourDict[node1].append(node2)
+                j+=1
+            i+=1
 
+    @timeit
     def __addpath(self, path: "Path"):
         for node in path.nodelist:
             self.__insertNodeReversePathTable(node, path)
@@ -225,16 +251,17 @@ class PathCache2:
         self.size += path.nodeNumber
         bb = path.bonding_box
         self.ridx.insert(id=path.ID, coordinates=bb)
+        print("2Add a path : %d" % path.ID)
 
+    @timeit
     def PCCA(self, pathlist: "list[Path]"):
 
         # ====================================================
         pathlist.sort(key=lambda x: x.length, reverse=True)
 
         i = 0
-        j = 1
-
         while (i < len(pathlist) - 1):
+            j = i+1
             longerOne = pathlist[i]
             while (j < len(pathlist)):
                 shorterOne = pathlist[j]
@@ -268,6 +295,7 @@ class PathCache2:
         pid_set = set(origin_in_pathid_list) & set(destination_in_pathid_list)
 
         if (pid_set):
+            # return
             print(pid_set)
         else:
             return None
@@ -293,29 +321,29 @@ class PathCache2:
 
 
 if (__name__ == "__main__"):
-    from readdata import readNode, readEdge, readPOI, generateOneQuery, generateOnePath
+    from readdata import readNode, readEdge, readPOI, generateOneQuery
 
     readNode()
     readPOI()
     readEdge()
 
-    # 从文件中读取一些生成好的path
-    pkl_file = open('path100_10_16_49.storage', 'rb')
-    querypathlist = pickle.load(pkl_file)
-    querylist = []
-    for path in querypathlist:
-        querylist.append((path.originNode, path.destinationNode))
-
-    # # 用POI生成一些query
+    # # 从文件中读取一些生成好的path
+    # pkl_file = open('path10000_20_25_34.storage', 'rb')
+    # querypathlist = pickle.load(pkl_file)
     # querylist = []
-    # queryNum = 100000
-    # for i in range(queryNum):
-    #     query = generateOneQuery()
-    #     querylist.append(query)
-    # print("Generate %d query." % queryNum)
+    # for path in querypathlist:
+    #     querylist.append((path.originNode, path.destinationNode))
+
+    # 用POI生成一些query
+    querylist = []
+    queryNum = 100
+    for i in range(queryNum):
+        query = generateOneQuery()
+        querylist.append(query)
+    print("Generate %d query." % queryNum)
 
     # 从文件中读取一些生成好的path
-    pkl_file = open('path10000_10_16_23.storage', 'rb')
+    pkl_file = open('path10000_20_25_34.storage', 'rb')
     querypathlist = pickle.load(pkl_file)
     print("Read %d path." % (len(querypathlist)))
 
@@ -329,12 +357,12 @@ if (__name__ == "__main__"):
     # print("Generate %d path." % pathNum)
 
     # 初始化两种cache
-    cache1 = PathCache1(capacity=2000)
+    # cache1 = PathCache1(capacity=2000)
     cache2 = PathCache2(capacity=10000)
 
     # 把path信息添加到缓存内
     # cache1.PCCA(pathlist)
-    cache2.PCCA(querypathlist)
+    cache2.PCCA(querypathlist[:1000])
     print("Cache2 have %d path." % (cache2.size))
 
     #

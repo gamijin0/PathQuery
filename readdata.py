@@ -7,12 +7,13 @@ import hashlib
 sys.path.append(".")
 
 from cache import Node, Path
-from dijkstra import Graph
+import networkx as nx
 
 POIList = []
 EdgeDict = {}
 NodeDict = {}
 DijkstraGraph = None
+
 
 def readPOI():
     count = 0
@@ -55,8 +56,10 @@ def readNode():
 
 
 def generateOneQuery():
-    origin, destation = random.sample(POIList, 2)
-    return origin, destation
+    # origin, destation = random.sample(POIList, 2)
+    nids = NodeDict.keys()
+    startId, endId = random.sample(nids, 2)
+    return NodeDict[startId], NodeDict[endId]
 
 
 def readEdge():
@@ -72,37 +75,28 @@ def readEdge():
             if not line:
                 break
             edgeid, sid, eid, dis = line.split(' ')
-            edge_list_for_dijkstra.append((int(sid),int(eid),float(dis)))
+            edge_list_for_dijkstra.append((int(sid), int(eid), float(dis)))
             EdgeDict[int(edgeid)] = (int(sid), int(eid))
     print("Read %d edges" % len(EdgeDict))
 
-    DijkstraGraph = Graph(edge_list_for_dijkstra)
+    DijkstraGraph = nx.Graph()
+    DijkstraGraph.add_weighted_edges_from(edge_list_for_dijkstra)
     print("Generate a dijistra graph for all edges")
 
 
+def CloudBaseQuery(startId, endId):
+    global nx
+    path_nids = nx.dijkstra_path(DijkstraGraph, startId, endId)
+    nodelist = [NodeDict[nid] for nid in path_nids]
+    return Path(nodelist)
 
 
-# 生成一条虚拟的路径
-def generateOnePath(a=3, b=5):
-    targetLength = random.randint(a, b)
-    while True:
-        startEdgeId = random.randint(0, len(EdgeDict) - 1)
-        neighbourEidList = [startEdgeId]
-        nextSid = EdgeDict[startEdgeId][1]
-        for i in range(targetLength):
-            nexts = {k: v for k, v in EdgeDict.items() if v[0] == nextSid}
-            if (len(nexts) == 0):
-                break
-            k, v = random.choice(list(nexts.items()))
-            neighbourEidList.append(int(k))
-            nextSid = v[1]
-        if (len(neighbourEidList) >= targetLength):
-            break
-
-    nodelist = [NodeDict[EdgeDict[neighbourEidList[0]][0]]]
-    for eid in neighbourEidList:
-        nodelist.append(NodeDict[EdgeDict[eid][1]])
-
+# 利用迪杰斯特拉算法生成一些路径
+def generateOnePathByDijkstra():
+    nids = NodeDict.keys()
+    startId, endId = random.sample(nids, 2)
+    path_nids = nx.dijkstra_path(DijkstraGraph, startId, endId)
+    nodelist = [NodeDict[nid] for nid in path_nids]
     first = nodelist[0]
     last = nodelist[-1]
     nodelist = [sorted(POIList, key=lambda x: x.lengthTo(first))[0]] + nodelist
@@ -112,30 +106,63 @@ def generateOnePath(a=3, b=5):
     return res
 
 
+# # 生成一条虚拟的路径
+# def generateOnePath(a=3, b=5):
+#     targetLength = random.randint(a, b)
+#     while True:
+#         startEdgeId = random.randint(0, len(EdgeDict) - 1)
+#         neighbourEidList = [startEdgeId]
+#         nextSid = EdgeDict[startEdgeId][1]
+#         for i in range(targetLength):
+#             nexts = {k: v for k, v in EdgeDict.items() if v[0] == nextSid}
+#             if (len(nexts) == 0):
+#                 break
+#             k, v = random.choice(list(nexts.items()))
+#             neighbourEidList.append(int(k))
+#             nextSid = v[1]
+#         if (len(neighbourEidList) >= targetLength):
+#             break
+#
+#     nodelist = [NodeDict[EdgeDict[neighbourEidList[0]][0]]]
+#     for eid in neighbourEidList:
+#         nodelist.append(NodeDict[EdgeDict[eid][1]])
+#
+#     first = nodelist[0]
+#     last = nodelist[-1]
+#     nodelist = [sorted(POIList, key=lambda x: x.lengthTo(first))[0]] + nodelist
+#     nodelist.append(sorted(POIList, key=lambda x: x.lengthTo(last))[0])
+#
+#     res = Path(nodelist)
+#     return res
+#
+
 if (__name__ == "__main__"):
     readNode()
     readPOI()
     readEdge()
 
-    # print(generateOnePath())
-
-    import pickle
-    from datetime import datetime
+    # # print(generateOnePath())
     #
-    # pkl_file = open('./path100_10_16_49.storage', 'rb')
-    # pathlist = pickle.load(pkl_file)
-    # for path in pathlist:
-    #     print(path)
-
+    # import pickle
+    # from datetime import datetime
+    # #
+    # # pkl_file = open('./path100_10_16_49.storage', 'rb')
+    # # pathlist = pickle.load(pkl_file)
+    # # for path in pathlist:
+    # #     print(path)
+    #
     pathlist = []
     pathNum = 10000
 
+    import pickle
+    from datetime import datetime
+
     t = datetime.now()
 
-    output = open('path%d_%s.storage' % (pathNum,str(t)[11:19].replace(':','_')), 'wb')
+    output = open('path%d_%s.storage' % (pathNum, str(t)[11:19].replace(':', '_')), 'wb')
     for i in range(pathNum):
-        path = generateOnePath()
-        print(i)
+        path = generateOnePathByDijkstra()
+        print(i, len(path.nodelist))
         pathlist.append(path)
     print("Generate %d path." % pathNum)
     pickle.dump(pathlist, output)
