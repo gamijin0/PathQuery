@@ -1,6 +1,6 @@
 from readdata import readEdge,readNode,readPOI,generateOneQuery
 import pickle
-from cache2 import PathCache2
+from cache import PathCache2
 
 
 if(__name__=="__main__"):

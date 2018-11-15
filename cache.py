@@ -6,6 +6,7 @@ import time
 import networkx as nx
 import sys
 
+
 # from readdata import readNode, readEdge, readPOI, generateOneQuery
 
 
@@ -34,12 +35,13 @@ def mockCloudBaseQuery(query: "(Node,Node)") -> "Path":
 # 从长的path中截取subpath作为query的答案
 # 由于path不在Cache2中，所以不能用Rtree加速
 def extractSubPath(path: "Path", query: "(Node,Node)") -> "Path":
-    oi = path.nodelist.index(query[0])
-    di = path.nodelist.index(query[1])
-    if (oi < di):
-        return Path(path.nodelist[oi:di + 1])
-    else:
-        return Path(path.nodelist[di:oi + 1][::-1])
+    return None
+    # oi = path.nodelist.index(query[0])
+    # di = path.nodelist.index(query[1])
+    # if (oi < di):
+    #     return Path(path.nodelist[oi:di + 1])
+    # else:
+    #     return Path(path.nodelist[di:oi + 1][::-1])
 
 
 # PSA
@@ -61,7 +63,7 @@ def PSA(querylist: "list([(Node,Node),])"):
             if (longerPath.isCoverNode(shorterQuery[0])
                 and longerPath.isCoverNode(shorterQuery[1])):
                 count += 1
-                print("PSA Hit %d :%s-->%s" % (count, longerPath, shorterQuery))
+                # print("PSA Hit %d :%s-->%s" % (count, longerPath, shorterQuery))
                 res[shorterQuery] = extractSubPath(longerPath, shorterQuery)
                 querylist.remove(shorterQuery)
             else:
@@ -93,12 +95,10 @@ class Node:
     def __hash__(self):
         return self.nid
 
-
-    def isStraightLineTo(self,n:"Node",offset=0.015):
-        if(self.x-offset<=n.x<=self.x+offset or self.y-offset<=n.y<=self.y+offset):
+    def isStraightLineTo(self, n: "Node", offset=0.015):
+        if (self.x - offset <= n.x <= self.x + offset or self.y - offset <= n.y <= self.y + offset):
             return True
         return False
-
 
     __repr__ = __str__
 
@@ -235,11 +235,11 @@ class PathCache1:
             for path in self.pathlist:
                 if (path.isCoverNode(query[0]) and path.isCoverNode(query[1])):
                     count += 1
-                    print("PCA1 Hit %d :%s -> %s" % (count, path, query))
+                    # print("PCA1 Hit %d :%s -> %s" % (count, path, query))
                     res[query] = extractSubPath(path, query)
                     querylist.remove(query)
                     break
-        print("PCA1 hit rate: %.2f" % (100.0*count/len(querylist)))
+        # print("PCA1 hit rate: %.2f" % (100.0*count/len(querylist)))
         # res.update(PSA(querylist))
         return res
 
@@ -311,7 +311,7 @@ class PathCache2:
                     longerOne.shareAbility += 1.0
                     shorterOne.shareAbility = 0
                     pathlist.remove(shorterOne)
-                    print("PCCA2 remove 1")
+                    # print("PCCA2 remove 1")
                 else:
                     j += 1
             i += 1
@@ -341,7 +341,7 @@ class PathCache2:
         if (originEdgeIds and DestinationIds):
             res = self.findPath(originEdgeIds[0], DestinationIds[0])
             path = Path([self.NodeDict[nid] for nid in res])
-            print("Cache2 hit: " + str(path))
+            # print("Cache2 hit: " + str(path))
             return path
         else:
             return None
@@ -356,7 +356,7 @@ class PathCache2:
                 res[query] = path
                 querylist.remove(query)
         # res.update(PSA(querylist))
+        hit_rate = count * 100.0 / len(querylist)
+        # print("Cache2 hit rate: %.2f%%" % (hit_rate))
 
-        print("Cache2 hit rate: %.2f%%" % (count * 100.0 / len(querylist)))
-
-        return res
+        return hit_rate

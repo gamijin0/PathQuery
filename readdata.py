@@ -6,7 +6,7 @@ import hashlib
 
 sys.path.append(".")
 
-from cache2 import Node, Path
+from cache import Node, Path
 import networkx as nx
 
 POIList = []

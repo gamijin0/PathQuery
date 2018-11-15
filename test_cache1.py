@@ -6,7 +6,7 @@ import time
 import networkx as nx
 import sys
 from readdata import readNode, readEdge, readPOI, generateOneQuery, CloudBaseQuery
-from cache2 import PathCache1
+from cache import PathCache1
 
 
 if(__name__=='__main__'):
