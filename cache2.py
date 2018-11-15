@@ -6,7 +6,7 @@ import time
 import networkx as nx
 import sys
 
-from readdata import readNode, readEdge, readPOI, generateOneQuery, CloudBaseQuery
+# from readdata import readNode, readEdge, readPOI, generateOneQuery
 
 
 def timeit(method):
@@ -27,6 +27,7 @@ def timeit(method):
 
 # 向云服务查询一条最短路径
 def mockCloudBaseQuery(query: "(Node,Node)") -> "Path":
+    from readdata import CloudBaseQuery
     return CloudBaseQuery(query[0].nid, query[1].nid)
 
 
@@ -91,6 +92,13 @@ class Node:
 
     def __hash__(self):
         return self.nid
+
+
+    def isStraightLineTo(self,n:"Node",offset=0.015):
+        if(self.x-offset<=n.x<=self.x+offset or self.y-offset<=n.y<=self.y+offset):
+            return True
+        return False
+
 
     __repr__ = __str__
 

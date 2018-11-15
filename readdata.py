@@ -6,7 +6,7 @@ import hashlib
 
 sys.path.append(".")
 
-from cache import Node, Path
+from cache2 import Node, Path
 import networkx as nx
 
 POIList = []
@@ -70,14 +70,21 @@ def readEdge():
               mode='r',
               encoding='utf-8'
               ) as f:
+
+        c = 0
         while True:
             line = f.readline()
             if not line:
                 break
             edgeid, sid, eid, dis = line.split(' ')
+            startNode = NodeDict[int(sid)]
+            endNode  = NodeDict[int(eid)]
+            if(not startNode.isStraightLineTo(endNode)):
+                c+=1
             edge_list_for_dijkstra.append((int(sid), int(eid), float(dis)))
             EdgeDict[int(edgeid)] = (int(sid), int(eid))
-    print("Read %d edges" % len(EdgeDict))
+
+    print("Read %d edges, not staight: %.2f%%" % (len(EdgeDict),100.0*c/len(EdgeDict)))
 
     DijkstraGraph = nx.Graph()
     DijkstraGraph.add_weighted_edges_from(edge_list_for_dijkstra)
@@ -140,29 +147,29 @@ if (__name__ == "__main__"):
     readNode()
     readPOI()
     readEdge()
-
-    # # print(generateOnePath())
+    #
+    # # # print(generateOnePath())
+    # #
+    # # import pickle
+    # # from datetime import datetime
+    # # #
+    # # # pkl_file = open('./path100_10_16_49.storage', 'rb')
+    # # # pathlist = pickle.load(pkl_file)
+    # # # for path in pathlist:
+    # # #     print(path)
+    # #
+    # pathlist = []
+    # pathNum = 10000
     #
     # import pickle
     # from datetime import datetime
-    # #
-    # # pkl_file = open('./path100_10_16_49.storage', 'rb')
-    # # pathlist = pickle.load(pkl_file)
-    # # for path in pathlist:
-    # #     print(path)
     #
-    pathlist = []
-    pathNum = 10000
-
-    import pickle
-    from datetime import datetime
-
-    t = datetime.now()
-
-    output = open('path%d_%s.storage' % (pathNum, str(t)[11:19].replace(':', '_')), 'wb')
-    for i in range(pathNum):
-        path = generateOnePathByDijkstra()
-        print(i, len(path.nodelist))
-        pathlist.append(path)
-    print("Generate %d path." % pathNum)
-    pickle.dump(pathlist, output)
+    # t = datetime.now()
+    #
+    # output = open('path%d_%s.storage' % (pathNum, str(t)[11:19].replace(':', '_')), 'wb')
+    # for i in range(pathNum):
+    #     path = generateOnePathByDijkstra()
+    #     print(i, len(path.nodelist))
+    #     pathlist.append(path)
+    # print("Generate %d path." % pathNum)
+    # pickle.dump(pathlist, output)
