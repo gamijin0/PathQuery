@@ -1,0 +1,180 @@
+Index: cache2.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import hashlib\nimport math\nfrom rtree import index\nimport pickle\nimport time\nimport networkx as nx\nimport sys\n\nfrom readdata import readNode, readEdge, readPOI, generateOneQuery, CloudBaseQuery\n\n\ndef timeit(method):\n    def timed(*args, **kw):\n        ts = time.time()\n        result = method(*args, **kw)\n        te = time.time()\n        if 'log_time' in kw:\n            name = kw.get('log_name', method.__name__.upper())\n            kw['log_time'][name] = int((te - ts) * 1000)\n        else:\n            print('%r  %2.2f ms' % \\\n                  (method.__name__, (te - ts) * 1000))\n        return result\n\n    return timed\n\n\n# 向云服务查询一条最短路径\ndef mockCloudBaseQuery(query: \"(Node,Node)\") -> \"Path\":\n    return CloudBaseQuery(query[0].nid, query[1].nid)\n\n\n# 从长的path中截取subpath作为query的答案\n# 由于path不在Cache2中，所以不能用Rtree加速\ndef extractSubPath(path: \"Path\", query: \"(Node,Node)\") -> \"Path\":\n    oi = path.nodelist.index(query[0])\n    di = path.nodelist.index(query[1])\n    if (oi < di):\n        return Path(path.nodelist[oi:di + 1])\n    else:\n        return Path(path.nodelist[di:oi + 1][::-1])\n\n\n# PSA\n# 大量query的内部覆盖缩减\ndef PSA(querylist: \"list([(Node,Node),])\"):\n    querylist.sort(key=lambda x: x[0].lengthTo(x[1]), reverse=True)\n\n    i = 0\n    j = 1\n\n    res = {}\n    count = 0\n\n    while (i < len(querylist) - 1):\n        longerPath = mockCloudBaseQuery(querylist[i])\n        res[querylist[i]] = longerPath\n        while (j < len(querylist)):\n            shorterQuery = querylist[j]\n            if (longerPath.isCoverNode(shorterQuery[0])\n                and longerPath.isCoverNode(shorterQuery[1])):\n                count += 1\n                print(\"PSA Hit %d :%s-->%s\" % (count, longerPath, shorterQuery))\n                res[shorterQuery] = extractSubPath(longerPath, shorterQuery)\n                querylist.remove(shorterQuery)\n            else:\n                j += 1\n        i += 1\n\n    return res\n\n\nclass Node:\n    nid = 0\n    x = 0.0\n    y = 0.0\n\n    def __init__(self, nid, x, y):\n        self.nid, self.x, self.y = int(nid), float(x), float(y)\n\n    def __eq__(self, other):\n        if (self.x == other.x and self.y == other.y):\n            return True\n        return False\n\n    def lengthTo(self, a_node: \"Node\"):\n        return math.sqrt((self.x - a_node.x) ** 2 + (self.y - a_node.y) ** 2)\n\n    def __str__(self):\n        return \"Node<%d>(%.2f,%.2f)\" % (self.nid, self.x, self.y)\n\n    def __hash__(self):\n        return self.nid\n\n    __repr__ = __str__\n\n\n#\n# class Edge:\n#     def __init__(self,n1:Node,n2:Node):\n#         self.n1 = n1\n#         self.n2 = n2\n\nclass Path:\n    shareAbility = 0\n    nodelist = []\n    length = 0.0\n    nodeNumber = 0\n    ID = 0\n\n    def __init__(self, nodelist):\n        self.nodelist = tuple(nodelist)\n        L2 = (self.originNode.x - self.destinationNode.x) ** 2 + \\\n             (self.originNode.y - self.destinationNode.y) ** 2  # 适当放大避免精度问题\n        self.length = math.sqrt(L2 * (10 ** 8))  # 适当放大避免精度问题\n        self.nodeNumber = len(nodelist)\n        self.ID = hash(tuple(set(self.nodelist)))\n\n    # 起点\n    @property\n    def originNode(self):\n        return self.nodelist[0]\n\n    def __repr__(self):\n        return str(self.nodelist) + \"->\" + str(len(self.nodelist))\n        # return \"{\" + \"->\".join([str(node) for node in self.nodelist]) + \"}\"\n\n    def __hash__(self):\n        return self.ID\n\n    # 终点\n    @property\n    def destinationNode(self):\n        return self.nodelist[-1]\n\n    # path是否包含一个node\n    def isCoverNode(self, node: \"Node\"):\n        for i in range(len(self.nodelist) - 1):\n            n1 = self.nodelist[i]\n            n2 = self.nodelist[i + 1]\n            l2 = n1.lengthTo(node) + n2.lengthTo(node)\n            l1 = n1.lengthTo(n2)\n\n            if (l2 <= l1 * 1.5):\n                return True\n\n        # for n in self.nodelist:\n        #     if (node == n):\n        #         return True\n        return False\n\n    # 是否包含了另一个path\n    def isCoverPath(self, path2: \"Path\"):\n        if (self.isCoverNode(path2.originNode)\n            and self.isCoverNode(path2.destinationNode)\n            ):\n            return True\n        return False\n\n    @property\n    def ShareAblityPerNode(self):\n        return self.shareAbility * 1.0 / self.nodeNumber\n\n    @property\n    def bonding_box(self) -> tuple:\n        left = min([node.x for node in self.nodelist])\n        bottom = min([node.y for node in self.nodelist])\n        right = max([node.x for node in self.nodelist])\n        top = max([node.y for node in self.nodelist])\n        return (left, bottom, right, top)\n\n\n# 所有的查找都是遍历，没有索引加速\n# Cache[\n#   Path[\n#       (x,y),\n#       ...],\n#   ...]\nclass PathCache1:\n    pathlist = []\n    capacity = 0\n    size = 0\n\n    def __init__(self, capacity=1000):\n        self.capacity = capacity\n        pass\n\n    def __addpath(self, path: \"Path\"):\n        self.pathlist.append(path)\n        self.size += len(path.nodelist)\n\n    # 输入一些path来构造缓存\n    @timeit\n    def PCCA(self, pathlist: \"[Path]\", ):\n\n        pathlist.sort(key=lambda x: x.length, reverse=True)\n\n        i = 0\n        j = 1\n\n        while (i < len(pathlist) - 1):\n            longerOne = pathlist[i]\n            j=i+1\n            while (j < len(pathlist)):\n                shorterOne = pathlist[j]\n                if (longerOne.isCoverPath(shorterOne)):\n                    longerOne.shareAbility += 1.0\n                    shorterOne.shareAbility = 0\n                    pathlist.remove(shorterOne)\n                else:\n                    j += 1\n            i += 1\n\n        pathlist.sort(key=lambda x: x.ShareAblityPerNode, reverse=True)\n\n        for path in pathlist:\n            if (self.size + path.nodeNumber > self.capacity):\n                break\n            else:\n                self.__addpath(path)\n                print(\"Add path to cache1,sa:%.2f\" % path.ShareAblityPerNode)\n    @timeit\n    def PCA(self, querylist: \"[(Node,Node)]\"):\n        res = {}\n        count = 0\n        for query in querylist:\n            for path in self.pathlist:\n                if (path.isCoverNode(query[0]) and path.isCoverNode(query[1])):\n                    count += 1\n                    print(\"PCA1 Hit %d :%s -> %s\" % (count, path, query))\n                    res[query] = extractSubPath(path, query)\n                    querylist.remove(query)\n                    break\n        print(\"PCA1 hit rate: %.2f\" % (100.0*count/len(querylist)))\n        # res.update(PSA(querylist))\n        return res\n\n\n# 第二种缓存结构\n# 利用倒排索引和邻接表来进行加速查找\nclass PathCache2:\n    NodeDict = {}\n    EdgeDict = {}\n    DijkstraGraph = nx.Graph()\n    capacity = 0\n    size = 0\n\n    def __init__(self, capacity=1000):\n        self.capacity = capacity\n        self.ridx = index.Index()\n        pass\n\n    # def __insertEdgeReversePathTable(self, edge: \"Path\", path: \"Path\"):\n    #     if (edge.ID in self.__edgeID2PathDict):\n    #         self.__edgeID2PathDict[edge.ID].add(path.ID)\n    #     else:\n    #         self.__edgeID2PathDict[edge.ID] = set([path.ID])\n    #\n    # @timeit\n    # def __updateEdgeNeighbourTable(self, path: \"Path\"):\n    #     for i in range(0, len(path.nodelist) - 2):\n    #         thisEdge = Path([path.nodelist[i], path.nodelist[i + 1]])\n    #         postEdge = Path([path.nodelist[i + 1], path.nodelist[i + 2]])\n    #         if (thisEdge.ID in self.__edgeIDNeighbourDict):\n    #             self.__edgeIDNeighbourDict[thisEdge.ID].add(postEdge.ID)\n    #         else:\n    #             self.__edgeIDNeighbourDict[thisEdge.ID] = set([postEdge.ID])\n    #         if (postEdge in self.__edgeIDNeighbourDict):\n    #             self.__edgeIDNeighbourDict[postEdge.ID].add(thisEdge.ID)\n    #         else:\n    #             self.__edgeIDNeighbourDict[postEdge.ID] = set([thisEdge.ID])\n\n    def __addpath(self, path: \"Path\"):\n        for i in range(len(path.nodelist) - 1):\n            n1 = path.nodelist[i]\n            self.NodeDict[n1.nid] = n1\n            n2 = path.nodelist[i + 1]\n\n            nx.add_path(self.DijkstraGraph, nodes_for_path=[n1.nid, n2.nid], weight=n1.lengthTo(n2))\n\n            edge = Path([n1, n2])\n            self.EdgeDict[edge.ID] = (n1.nid, n2.nid)\n            bb = edge.bonding_box\n            self.ridx.insert(id=edge.ID, coordinates=bb)\n\n        self.NodeDict[path.nodelist[-1].nid] = path.nodelist[-1]\n\n        self.size += path.nodeNumber\n        # print(\"2Add a path : %d\" % path.ID)\n\n    @timeit\n    def PCCA(self, pathlist: \"list[Path]\"):\n        # ====================================================\n        pathlist.sort(key=lambda x: x.length, reverse=True)\n        i = 0\n        while (i < len(pathlist) - 1):\n            j = i + 1\n            longerOne = pathlist[i]\n            while (j < len(pathlist)):\n                shorterOne = pathlist[j]\n\n                if (longerOne.isCoverPath(shorterOne)):\n                    longerOne.shareAbility += 1.0\n                    shorterOne.shareAbility = 0\n                    pathlist.remove(shorterOne)\n                    print(\"PCCA2 remove 1\")\n                else:\n                    j += 1\n            i += 1\n        pathlist.sort(key=lambda x: x.ShareAblityPerNode, reverse=True)\n\n        for path in pathlist:\n            if (self.size + path.nodeNumber > self.capacity):\n                break\n            else:\n                self.__addpath(path)\n\n    def findPath(self, fromEdgeId, toEdgeId):\n        nid1 = self.EdgeDict[fromEdgeId][0]\n        nid2 = self.EdgeDict[toEdgeId][0]\n        return nx.dijkstra_path(self.DijkstraGraph, nid1, nid2)\n\n    # 利用Rtree来查找覆盖的path\n    def do_rtree_query(self, query: \"(Node,Node)\") -> \"Path\":\n        # 用一次查询的起点和终点分别构造一个bonding_box\n        origin_bb = [query[0].x, query[0].y, query[0].x, query[0].y]\n        destination_bb = [query[1].x, query[1].y, query[1].x, query[1].y]\n\n        # 利用bonding_box对rtree_index进行交集查询，得到候选pid_list\n        originEdgeIds = list(self.ridx.intersection(origin_bb))\n        DestinationIds = list(self.ridx.intersection(destination_bb))\n        # print(originEdgeIds, DestinationIds)\n        if (originEdgeIds and DestinationIds):\n            res = self.findPath(originEdgeIds[0], DestinationIds[0])\n            path = Path([self.NodeDict[nid] for nid in res])\n            print(\"Cache2 hit: \" + str(path))\n            return path\n        else:\n            return None\n\n    def PCA(self, querylist: \"[(Node,Node),]\"):\n        count = 0\n        res = {}\n        for query in querylist:\n            path = self.do_rtree_query(query)\n            if (path):\n                count += 1\n                res[query] = path\n                querylist.remove(query)\n        # res.update(PSA(querylist))\n\n        print(\"Cache2 hit rate: %.2f%%\" % (count * 100.0 / len(querylist)))\n\n        return res\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- cache2.py	(revision f88bd776ec3aa6c8e9439f9e79c488a45aabcdc6)
++++ cache2.py	(revision )
+@@ -141,7 +141,7 @@
+             l2 = n1.lengthTo(node) + n2.lengthTo(node)
+             l1 = n1.lengthTo(n2)
+ 
+-            if (l2 <= l1 * 1.5):
++            if (l2 <= l1 * 1.8):
+                 return True
+ 
+         # for n in self.nodelist:
+@@ -181,7 +181,7 @@
+     capacity = 0
+     size = 0
+ 
+-    def __init__(self, capacity=1000):
++    def __init__(self, capacity):
+         self.capacity = capacity
+         pass
+ 
+@@ -192,26 +192,26 @@
+     # 输入一些path来构造缓存
+     @timeit
+     def PCCA(self, pathlist: "[Path]", ):
+-
+-        pathlist.sort(key=lambda x: x.length, reverse=True)
+-
+-        i = 0
+-        j = 1
+-
+-        while (i < len(pathlist) - 1):
+-            longerOne = pathlist[i]
+-            j=i+1
+-            while (j < len(pathlist)):
+-                shorterOne = pathlist[j]
+-                if (longerOne.isCoverPath(shorterOne)):
+-                    longerOne.shareAbility += 1.0
+-                    shorterOne.shareAbility = 0
+-                    pathlist.remove(shorterOne)
+-                else:
+-                    j += 1
+-            i += 1
+-
+-        pathlist.sort(key=lambda x: x.ShareAblityPerNode, reverse=True)
++        #
++        # pathlist.sort(key=lambda x: x.length, reverse=True)
++        #
++        # i = 0
++        # j = 1
++        #
++        # while (i < len(pathlist) - 1):
++        #     longerOne = pathlist[i]
++        #     j=i+1
++        #     while (j < len(pathlist)):
++        #         shorterOne = pathlist[j]
++        #         if (longerOne.isCoverPath(shorterOne)):
++        #             longerOne.shareAbility += 1.0
++        #             shorterOne.shareAbility = 0
++        #             pathlist.remove(shorterOne)
++        #         else:
++        #             j += 1
++        #     i += 1
++        #
++        # pathlist.sort(key=lambda x: x.ShareAblityPerNode, reverse=True)
+ 
+         for path in pathlist:
+             if (self.size + path.nodeNumber > self.capacity):
+@@ -219,6 +219,7 @@
+             else:
+                 self.__addpath(path)
+                 print("Add path to cache1,sa:%.2f" % path.ShareAblityPerNode)
++
+     @timeit
+     def PCA(self, querylist: "[(Node,Node)]"):
+         res = {}
+@@ -231,7 +232,7 @@
+                     res[query] = extractSubPath(path, query)
+                     querylist.remove(query)
+                     break
+-        print("PCA1 hit rate: %.2f" % (100.0*count/len(querylist)))
++        print("PCA1 hit rate: %.2f%%" % (100.0 * count / len(querylist)))
+         # res.update(PSA(querylist))
+         return res
+ 
+@@ -290,11 +291,13 @@
+ 
+     @timeit
+     def PCCA(self, pathlist: "list[Path]"):
+-        # ====================================================
++        #====================================================
++        #对path的长度进行排序
+         pathlist.sort(key=lambda x: x.length, reverse=True)
+         i = 0
+         while (i < len(pathlist) - 1):
+             j = i + 1
++            #每次挑出最长的一个
+             longerOne = pathlist[i]
+             while (j < len(pathlist)):
+                 shorterOne = pathlist[j]
+@@ -331,14 +334,19 @@
+         DestinationIds = list(self.ridx.intersection(destination_bb))
+         # print(originEdgeIds, DestinationIds)
+         if (originEdgeIds and DestinationIds):
+-            res = self.findPath(originEdgeIds[0], DestinationIds[0])
+-            path = Path([self.NodeDict[nid] for nid in res])
+-            print("Cache2 hit: " + str(path))
+-            return path
+-        else:
+-            return None
++            originEdge = self.EdgeDict[originEdgeIds[0]]
++            destEdge = self.EdgeDict[DestinationIds[0]]
++            e1 = Path([self.NodeDict[originEdge[0]], self.NodeDict[originEdge[1]]])
++            e2 = Path([self.NodeDict[destEdge[0]], self.NodeDict[destEdge[1]]])
++            if(e1.isCoverNode(query[0]) and e2.isCoverNode(query[1])):
++                res = self.findPath(originEdgeIds[0], DestinationIds[0])
++                path = Path([self.NodeDict[nid] for nid in res])
++                print("Cache2 hit: " + str(path))
++                return path
++        return None
+ 
+-    def PCA(self, querylist: "[(Node,Node),]"):
++    @timeit
++    def PCA2(self, querylist: "[(Node,Node),]"):
+         count = 0
+         res = {}
+         for query in querylist:
+Index: test_cache2.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>from readdata import readEdge,readNode,readPOI,generateOneQuery\nimport pickle\nfrom cache2 import PathCache2\n\n\nif(__name__==\"__main__\"):\n    readNode()\n    readPOI()\n    readEdge()\n\n\n    querylist = []\n    queryNum = 1000\n    for i in range(queryNum):\n        query = generateOneQuery()\n        querylist.append(query)\n    print(\"Generate %d query.\" % queryNum)\n\n\n    pkl_file = open('path10000_20_25_34.storage', 'rb')\n    querypathlist = pickle.load(pkl_file)\n    print(\"Read %d path.\" % (len(querypathlist)))\n    cacheset = querypathlist[:10000]\n\n\n    cache2 = PathCache2(capacity=10000)\n    cache2.PCCA(cacheset)\n    print(\"Cache2 cache %d path.\" % (len(cacheset)))\n    #\n    res2 = cache2.PCA(querylist)\n    print(\"PCA2 return %d answer.\" % (len(res2)))\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>GBK
+===================================================================
+--- test_cache2.py	(revision f88bd776ec3aa6c8e9439f9e79c488a45aabcdc6)
++++ test_cache2.py	(revision )
+@@ -10,7 +10,7 @@
+ 
+ 
+     querylist = []
+-    queryNum = 1000
++    queryNum = 2000
+     for i in range(queryNum):
+         query = generateOneQuery()
+         querylist.append(query)
+@@ -27,5 +27,5 @@
+     cache2.PCCA(cacheset)
+     print("Cache2 cache %d path." % (len(cacheset)))
+     #
+-    res2 = cache2.PCA(querylist)
++    res2 = cache2.PCA2(querylist)
+     print("PCA2 return %d answer." % (len(res2)))
+Index: test_cache1.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import hashlib\nimport math\nfrom rtree import index\nimport pickle\nimport time\nimport networkx as nx\nimport sys\nfrom readdata import readNode, readEdge, readPOI, generateOneQuery, CloudBaseQuery\nfrom cache2 import PathCache1\n\n\nif(__name__=='__main__'):\n\n\n\n    readNode()\n    readPOI()\n    readEdge()\n\n    querylist = []\n    queryNum = 1000\n    for i in range(queryNum):\n        query = generateOneQuery()\n        querylist.append(query)\n    print(\"Generate %d query.\" % queryNum)\n\n    pkl_file = open('path10000_20_25_34.storage', 'rb')\n    querypathlist = pickle.load(pkl_file)\n    print(\"Read %d path.\" % (len(querypathlist)))\n    cacheset = querypathlist[:1500]\n\n\n    cache1 = PathCache1(capacity=200000)\n\n    cache1.PCCA(cacheset)\n    cache1.PCA(querylist)\n\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>GBK
+===================================================================
+--- test_cache1.py	(revision f88bd776ec3aa6c8e9439f9e79c488a45aabcdc6)
++++ test_cache1.py	(revision )
+@@ -27,10 +27,10 @@
+     pkl_file = open('path10000_20_25_34.storage', 'rb')
+     querypathlist = pickle.load(pkl_file)
+     print("Read %d path." % (len(querypathlist)))
+-    cacheset = querypathlist[:1500]
++    cacheset = querypathlist[:10000]
+ 
+ 
+-    cache1 = PathCache1(capacity=200000)
++    cache1 = PathCache1(capacity=100000)
+ 
+     cache1.PCCA(cacheset)
+     cache1.PCA(querylist)
