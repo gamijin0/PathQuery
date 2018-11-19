@@ -37,13 +37,15 @@ def myTest(type: int = 1,
         cache = PathCache2(capacity=capacity)
 
     cache.PCCA(cacheset)
+    print("type %d PCCA finished" % type)
 
     ts = time.time()
-    hit_rate = cache.PCA(querylist)
+    hit_cout = cache.PCA(querylist)
     te = time.time()
     et = (te - ts) * 1000
+    et+=100*(queryNum-hit_cout)
 
-    msg = "#%d\t%d\t%d\t%.2f%%\t%2.2fms" % (type, queryNum, capacity, hit_rate, et * 1.0 / queryNum)
+    msg = "#%d\t%d\t%d\t%d\t%.2f%%\t%2.2fms" % (type,cachepathNum, queryNum, capacity, hit_cout*1.0/queryNum, et * 1.0 / queryNum)
 
     logging.info(msg)
 
@@ -52,16 +54,44 @@ if (__name__ == "__main__"):
 
     processPool = []
 
-    for queryNum in [10000, ]:
-        for capacity in [50000, 90000]:
-            test1 = Process(target=myTest, args=(1, queryNum, capacity, 200))
-            test2 = Process(target=myTest, args=(2, queryNum, capacity, 200))
+    logging.info("=" * 15 + "queryNum" + "=" * 15)
+    capacity = 500000
+    cachePathNum =10000
+    for queryNum in range(1000,5500,500):
+        test1 = Process(target=myTest, args=(1, queryNum, capacity, cachePathNum))
+        test2 = Process(target=myTest, args=(2, queryNum, capacity, cachePathNum))
+        test1.start()
+        test2.start()
+        test2.join()
+        test1.join()
 
-            test1.start()
-            test2.start()
+    logging.info("=" * 15 + "cache size" + "=" * 15)
+    queryNum = 3000
+    cachePathNum =10000
+    for capacity in range(100000,600000,100000):
+        test1 = Process(target=myTest, args=(1, queryNum, capacity, cachePathNum))
+        test2 = Process(target=myTest, args=(2, queryNum, capacity, cachePathNum))
+        test1.start()
+        test2.start()
+        test2.join()
+        test1.join()
 
-            processPool.append(test1)
-            processPool.append(test2)
+    logging.info("=" * 15 + "cache path num" + "=" * 15)
+    capacity = 500000
+    queryNum = 1000
+    for cachePathNum in range(5000,11000,1000):
+        test1 = Process(target=myTest, args=(1, queryNum, capacity, cachePathNum))
+        test2 = Process(target=myTest, args=(2, queryNum, capacity, cachePathNum))
+        test1.start()
+        test2.start()
+        test2.join()
+        test1.join()
 
-    for p in processPool:
-        p.join()
+
+
+    #
+    #         # processPool.append(test1)
+    #         processPool.append(test2)
+    #
+    # for p in processPool:
+    #     p.join()

@@ -104,10 +104,10 @@ def generateOnePathByDijkstra():
     startId, endId = random.sample(nids, 2)
     path_nids = nx.dijkstra_path(DijkstraGraph, startId, endId)
     nodelist = [NodeDict[nid] for nid in path_nids]
-    first = nodelist[0]
-    last = nodelist[-1]
-    nodelist = [sorted(POIList, key=lambda x: x.lengthTo(first))[0]] + nodelist
-    nodelist.append(sorted(POIList, key=lambda x: x.lengthTo(last))[0])
+    # first = nodelist[0]
+    # last = nodelist[-1]
+    # nodelist = [sorted(POIList, key=lambda x: x.lengthTo(first))[0]] + nodelist
+    # nodelist.append(sorted(POIList, key=lambda x: x.lengthTo(last))[0])
 
     res = Path(nodelist)
     return res
@@ -158,18 +158,19 @@ if (__name__ == "__main__"):
     # # # for path in pathlist:
     # # #     print(path)
     # #
-    # pathlist = []
-    # pathNum = 10000
-    #
-    # import pickle
-    # from datetime import datetime
-    #
-    # t = datetime.now()
-    #
-    # output = open('path%d_%s.storage' % (pathNum, str(t)[11:19].replace(':', '_')), 'wb')
-    # for i in range(pathNum):
-    #     path = generateOnePathByDijkstra()
-    #     print(i, len(path.nodelist))
-    #     pathlist.append(path)
-    # print("Generate %d path." % pathNum)
-    # pickle.dump(pathlist, output)
+
+    pathlist = []
+    pathNum = 30000
+
+    import pickle
+    from datetime import datetime
+
+    t = datetime.now()
+
+    output = open('path%d_%s.storage' % (pathNum, str(t)[11:19].replace(':', '_')), 'wb')
+    for i in range(pathNum):
+        path = generateOnePathByDijkstra()
+        print(i, len(path.nodelist))
+        pathlist.append(path)
+    print("Generate %d path." % pathNum)
+    pickle.dump(pathlist, output)

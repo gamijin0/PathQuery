@@ -61,7 +61,7 @@ def PSA(querylist: "list([(Node,Node),])"):
         while (j < len(querylist)):
             shorterQuery = querylist[j]
             if (longerPath.isCoverNode(shorterQuery[0])
-                and longerPath.isCoverNode(shorterQuery[1])):
+                    and longerPath.isCoverNode(shorterQuery[1])):
                 count += 1
                 # print("PSA Hit %d :%s-->%s" % (count, longerPath, shorterQuery))
                 res[shorterQuery] = extractSubPath(longerPath, shorterQuery)
@@ -160,8 +160,8 @@ class Path:
     # 是否包含了另一个path
     def isCoverPath(self, path2: "Path"):
         if (self.isCoverNode(path2.originNode)
-            and self.isCoverNode(path2.destinationNode)
-            ):
+                and self.isCoverNode(path2.destinationNode)
+        ):
             return True
         return False
 
@@ -202,31 +202,30 @@ class PathCache1:
     def PCCA(self, pathlist: "[Path]", ):
 
         pathlist.sort(key=lambda x: x.length, reverse=True)
-
-        i = 0
-        j = 1
-
-        while (i < len(pathlist) - 1):
-            longerOne = pathlist[i]
-            j=i+1
-            while (j < len(pathlist)):
-                shorterOne = pathlist[j]
-                if (longerOne.isCoverPath(shorterOne)):
-                    longerOne.shareAbility += 1.0
-                    shorterOne.shareAbility = 0
-                    pathlist.remove(shorterOne)
-                else:
-                    j += 1
-            i += 1
-
-        pathlist.sort(key=lambda x: x.ShareAblityPerNode, reverse=True)
+        #
+        # i = 0
+        # while (i < len(pathlist) - 1):
+        #     longerOne = pathlist[i]
+        #     j = i + 1
+        #     while (j < len(pathlist)):
+        #         shorterOne = pathlist[j]
+        #         if (longerOne.isCoverPath(shorterOne)):
+        #             longerOne.shareAbility += 1.0
+        #             shorterOne.shareAbility = 0
+        #             pathlist.remove(shorterOne)
+        #         else:
+        #             j += 1
+        #     i += 1
+        #
+        # pathlist.sort(key=lambda x: x.ShareAblityPerNode, reverse=True)
 
         for path in pathlist:
             if (self.size + path.nodeNumber > self.capacity):
                 break
             else:
                 self.__addpath(path)
-                print("Add path to cache1,sa:%.2f" % path.ShareAblityPerNode)
+                # print("Add path to cache1,sa:%.2f" % path.ShareAblityPerNode)
+
     @timeit
     def PCA(self, querylist: "[(Node,Node)]"):
         res = {}
@@ -236,12 +235,18 @@ class PathCache1:
                 if (path.isCoverNode(query[0]) and path.isCoverNode(query[1])):
                     count += 1
                     # print("PCA1 Hit %d :%s -> %s" % (count, path, query))
-                    res[query] = extractSubPath(path, query)
+                    # res[query] = extractSubPath(path, query)
                     querylist.remove(query)
                     break
-        # print("PCA1 hit rate: %.2f" % (100.0*count/len(querylist)))
-        # res.update(PSA(querylist))
-        return res
+
+        return count
+
+        # for one in querylist:
+        #     time.sleep(0.1)
+        # hit_rate = 100.0 * count / len(querylist)
+        # print("PCA1 hit rate: %.2f" % hit_rate)
+        # # res.update(PSA(querylist))
+        # return hit_rate
 
 
 # 第二种缓存结构
@@ -249,20 +254,23 @@ class PathCache1:
 class PathCache2:
     NodeDict = {}
     EdgeDict = {}
+    PathIDDict = {}
     DijkstraGraph = nx.Graph()
     capacity = 0
     size = 0
+    edgeID2PathDict = {}
 
     def __init__(self, capacity=1000):
         self.capacity = capacity
         self.ridx = index.Index()
         pass
 
-    # def __insertEdgeReversePathTable(self, edge: "Path", path: "Path"):
-    #     if (edge.ID in self.__edgeID2PathDict):
-    #         self.__edgeID2PathDict[edge.ID].add(path.ID)
-    #     else:
-    #         self.__edgeID2PathDict[edge.ID] = set([path.ID])
+    def __insertEdgeReversePathTable(self, edge: "Path", path: "Path"):
+        if (edge.ID in self.edgeID2PathDict):
+            self.edgeID2PathDict[edge.ID].add(path.ID)
+        else:
+            self.edgeID2PathDict[edge.ID] = set([path.ID])
+
     #
     # @timeit
     # def __updateEdgeNeighbourTable(self, path: "Path"):
@@ -279,17 +287,20 @@ class PathCache2:
     #             self.__edgeIDNeighbourDict[postEdge.ID] = set([thisEdge.ID])
 
     def __addpath(self, path: "Path"):
+
+        if (path.ID not in self.PathIDDict):
+            self.PathIDDict[path.ID] = path
+
         for i in range(len(path.nodelist) - 1):
             n1 = path.nodelist[i]
             self.NodeDict[n1.nid] = n1
             n2 = path.nodelist[i + 1]
-
-            nx.add_path(self.DijkstraGraph, nodes_for_path=[n1.nid, n2.nid], weight=n1.lengthTo(n2))
-
+            # nx.add_path(self.DijkstraGraph, nodes_for_path=[n1.nid, n2.nid], weight=n1.lengthTo(n2))
             edge = Path([n1, n2])
             self.EdgeDict[edge.ID] = (n1.nid, n2.nid)
             bb = edge.bonding_box
             self.ridx.insert(id=edge.ID, coordinates=bb)
+            self.__insertEdgeReversePathTable(edge, path)
 
         self.NodeDict[path.nodelist[-1].nid] = path.nodelist[-1]
 
@@ -300,22 +311,22 @@ class PathCache2:
     def PCCA(self, pathlist: "list[Path]"):
         # ====================================================
         pathlist.sort(key=lambda x: x.length, reverse=True)
-        i = 0
-        while (i < len(pathlist) - 1):
-            j = i + 1
-            longerOne = pathlist[i]
-            while (j < len(pathlist)):
-                shorterOne = pathlist[j]
-
-                if (longerOne.isCoverPath(shorterOne)):
-                    longerOne.shareAbility += 1.0
-                    shorterOne.shareAbility = 0
-                    pathlist.remove(shorterOne)
-                    # print("PCCA2 remove 1")
-                else:
-                    j += 1
-            i += 1
-        pathlist.sort(key=lambda x: x.ShareAblityPerNode, reverse=True)
+        # i = 0
+        # while (i < len(pathlist) - 1):
+        #     j = i + 1
+        #     longerOne = pathlist[i]
+        #     while (j < len(pathlist)):
+        #         shorterOne = pathlist[j]
+        #
+        #         if (longerOne.isCoverPath(shorterOne)):
+        #             longerOne.shareAbility += 1.0
+        #             shorterOne.shareAbility = 0
+        #             pathlist.remove(shorterOne)
+        #             # print("PCCA2 remove 1")
+        #         else:
+        #             j += 1
+        #     i += 1
+        # pathlist.sort(key=lambda x: x.ShareAblityPerNode, reverse=True)
 
         for path in pathlist:
             if (self.size + path.nodeNumber > self.capacity):
@@ -324,9 +335,14 @@ class PathCache2:
                 self.__addpath(path)
 
     def findPath(self, fromEdgeId, toEdgeId):
-        nid1 = self.EdgeDict[fromEdgeId][0]
-        nid2 = self.EdgeDict[toEdgeId][0]
-        return nx.dijkstra_path(self.DijkstraGraph, nid1, nid2)
+        pids = list(self.edgeID2PathDict[fromEdgeId] & self.edgeID2PathDict[toEdgeId])
+        if (pids):
+            return self.PathIDDict[pids[0]]
+        else:
+            return None
+        # nid1 = self.EdgeDict[fromEdgeId][0]
+        # nid2 = self.EdgeDict[toEdgeId][0]
+        # return nx.dijkstra_path(self.DijkstraGraph, nid1, nid2)
 
     # 利用Rtree来查找覆盖的path
     def do_rtree_query(self, query: "(Node,Node)") -> "Path":
@@ -339,9 +355,9 @@ class PathCache2:
         DestinationIds = list(self.ridx.intersection(destination_bb))
         # print(originEdgeIds, DestinationIds)
         if (originEdgeIds and DestinationIds):
-            res = self.findPath(originEdgeIds[0], DestinationIds[0])
-            path = Path([self.NodeDict[nid] for nid in res])
-            # print("Cache2 hit: " + str(path))
+
+            path = self.findPath(originEdgeIds[0], DestinationIds[0])
+            # # print("Cache2 hit: " + str(path))
             return path
         else:
             return None
@@ -355,8 +371,11 @@ class PathCache2:
                 count += 1
                 res[query] = path
                 querylist.remove(query)
-        # res.update(PSA(querylist))
-        hit_rate = count * 100.0 / len(querylist)
-        # print("Cache2 hit rate: %.2f%%" % (hit_rate))
 
-        return hit_rate
+        return count
+        # for one in querylist:
+        #     time.sleep(0.1)
+        # # res.update(PSA(querylist))
+        # hit_rate = count * 100.0 / len(querylist)
+        # # print("Cache2 hit rate: %.2f%%" % (hit_rate))
+        # return hit_rate
