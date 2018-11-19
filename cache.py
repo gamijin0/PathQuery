@@ -230,15 +230,21 @@ class PathCache1:
     def PCA(self, querylist: "[(Node,Node)]"):
         res = {}
         count = 0
-        for query in querylist:
+        i=0
+        while i<len(querylist):
+            query = querylist[i]
+            hit  = False
             for path in self.pathlist:
                 if (path.isCoverNode(query[0]) and path.isCoverNode(query[1])):
                     count += 1
+                    hit=True
                     # print("PCA1 Hit %d :%s -> %s" % (count, path, query))
                     # res[query] = extractSubPath(path, query)
-                    querylist.remove(query)
+                    querylist.pop(i)
                     break
-
+            if(not hit):
+                i+=1
+                
         return count
 
         # for one in querylist:
